@@ -22,6 +22,10 @@ import javax.inject.Singleton
  *
  * @param scope Service-scoped coroutine scope; effects follow settings changes live.
  */
+// The platform Virtualizer is deprecated in API 36 but has no replacement that
+// works on the pre-Android-16 devices this app still supports, so its use is
+// deliberate and the warnings are silenced here rather than at every call site.
+@Suppress("DEPRECATION")
 @Singleton
 class AudioEffectsController @Inject constructor(
     private val settingsRepository: SettingsRepository,

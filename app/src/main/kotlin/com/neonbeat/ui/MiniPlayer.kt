@@ -52,7 +52,7 @@ fun MiniPlayer(
     viewModel: PlayerViewModel = hiltViewModel(),
 ) {
     val playback by viewModel.playback.collectAsStateWithLifecycle()
-    val song = playback.currentSong
+    val song by viewModel.currentSong.collectAsStateWithLifecycle()
 
     Box(modifier, contentAlignment = Alignment.BottomCenter) {
         AnimatedVisibility(
@@ -60,71 +60,73 @@ fun MiniPlayer(
             enter = slideInVertically { it } + fadeIn(),
             exit = slideOutVertically { it } + fadeOut(),
         ) {
-            if (song != null) {
-                GlassSurface(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 12.dp)
-                        .padding(bottom = bottomInset + 8.dp)
-                        .clickable(onClick = onExpand),
-                ) {
-                    Column {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(8.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(12.dp),
-                        ) {
-                            AlbumArtwork(
-                                artworkUri = song.artworkUri,
-                                contentDescription = null,
-                                modifier = Modifier.size(44.dp),
-                            )
-                            Column(Modifier.weight(1f)) {
-                                Text(
-                                    text = song.title,
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
-                                )
-                                Text(
-                                    text = song.artist,
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
-                                )
-                            }
-                            IconButton(onClick = { viewModel.playPause() }) {
-                                Icon(
-                                    imageVector = if (playback.isPlaying) {
-                                        Icons.Default.Pause
-                                    } else {
-                                        Icons.Default.PlayArrow
-                                    },
-                                    contentDescription = if (playback.isPlaying) "Pause" else "Play",
-                                )
-                            }
-                            IconButton(onClick = { viewModel.next() }) {
-                                Icon(Icons.Default.SkipNext, contentDescription = "Next track")
-                            }
-                        }
+            // Captured once so the row always renders one consistent snapshot,
+            // even if the track changes mid-composition.
+            val current = song ?: return@AnimatedVisibility
 
-                        LinearProgressIndicator(
-                            progress = {
-                                val duration = playback.durationMs
-                                if (duration > 0) {
-                                    (playback.positionMs.toFloat() / duration).coerceIn(0f, 1f)
-                                } else {
-                                    0f
-                                }
-                            },
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(2.dp),
+            GlassSurface(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 12.dp)
+                    .padding(bottom = bottomInset + 8.dp)
+                    .clickable(onClick = onExpand),
+            ) {
+                Column {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    ) {
+                        AlbumArtwork(
+                            artworkUri = current.artworkUri,
+                            contentDescription = null,
+                            modifier = Modifier.size(44.dp),
                         )
+                        Column(Modifier.weight(1f)) {
+                            Text(
+                                text = current.title,
+                                style = MaterialTheme.typography.bodyMedium,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                            Text(
+                                text = current.artist,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
+                        IconButton(onClick = viewModel::playPause) {
+                            Icon(
+                                imageVector = if (playback.isPlaying) {
+                                    Icons.Default.Pause
+                                } else {
+                                    Icons.Default.PlayArrow
+                                },
+                                contentDescription = if (playback.isPlaying) "Pause" else "Play",
+                            )
+                        }
+                        IconButton(onClick = viewModel::next) {
+                            Icon(Icons.Default.SkipNext, contentDescription = "Next track")
+                        }
                     }
+
+                    LinearProgressIndicator(
+                        progress = {
+                            val duration = playback.durationMs
+                            if (duration > 0) {
+                                (playback.positionMs.toFloat() / duration).coerceIn(0f, 1f)
+                            } else {
+                                0f
+                            }
+                        },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(2.dp),
+                    )
                 }
             }
         }
