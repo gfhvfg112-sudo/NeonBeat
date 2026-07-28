@@ -78,7 +78,8 @@ class SmartPlaylistCompiler @Inject constructor() {
         val limitClause = limit?.let { " LIMIT $it" }.orEmpty()
 
         return CompiledQuery(
-            sql = "SELECT * FROM songs WHERE $where ORDER BY title COLLATE NOCASE ASC$limitClause",
+            sql = "SELECT s.* FROM songs s LEFT JOIN song_stats st ON st.songId = s.id " +
+                "WHERE $where ORDER BY s.title COLLATE NOCASE ASC$limitClause",
             args = args,
         )
     }
@@ -139,19 +140,26 @@ class SmartPlaylistCompiler @Inject constructor() {
     }
 }
 
-/** Maps each rule field to its physical column in the `songs` table. */
+/**
+ * Maps each rule field to a physical column.
+ *
+ * Library columns live on `songs` (alias `s`) and listening counters live on
+ * `song_stats` (alias `st`), which the compiled query always joins. `dateAdded`
+ * is stored in seconds by MediaStore, so it is scaled to milliseconds to match
+ * the epoch-millis values bound by relative-date rules.
+ */
 private val SmartField.column: String
     get() = when (this) {
-        SmartField.TITLE -> "title"
-        SmartField.ARTIST -> "artist"
-        SmartField.ALBUM -> "album"
-        SmartField.GENRE -> "genre"
-        SmartField.YEAR -> "year"
-        SmartField.DURATION -> "durationMs"
-        SmartField.PLAY_COUNT -> "playCount"
-        SmartField.RATING -> "rating"
-        SmartField.FAVORITE -> "isFavorite"
-        SmartField.DATE_ADDED -> "dateAdded"
-        SmartField.LAST_PLAYED -> "lastPlayedAt"
-        SmartField.FOLDER -> "folderPath"
+        SmartField.TITLE -> "s.title"
+        SmartField.ARTIST -> "s.artist"
+        SmartField.ALBUM -> "s.album"
+        SmartField.GENRE -> "s.genre"
+        SmartField.YEAR -> "s.year"
+        SmartField.DURATION -> "s.durationMs"
+        SmartField.FOLDER -> "s.folderPath"
+        SmartField.DATE_ADDED -> "(s.dateAddedSeconds * 1000)"
+        SmartField.PLAY_COUNT -> "IFNULL(st.playCount, 0)"
+        SmartField.RATING -> "IFNULL(st.rating, 0)"
+        SmartField.FAVORITE -> "IFNULL(st.isFavorite, 0)"
+        SmartField.LAST_PLAYED -> "IFNULL(st.lastPlayedAtEpochMs, 0)"
     }

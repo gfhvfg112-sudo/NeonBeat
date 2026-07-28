@@ -5,6 +5,7 @@ import com.neonbeat.core.common.di.IoDispatcher
 import com.neonbeat.core.database.dao.PlaylistDao
 import com.neonbeat.core.database.dao.SongDao
 import com.neonbeat.core.database.dao.StatsDao
+import com.neonbeat.core.database.entity.PlaylistEntity
 import com.neonbeat.core.datastore.SettingsRepository
 import com.neonbeat.domain.repository.BackupRepository
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -42,12 +43,12 @@ class BackupRepositoryImpl @Inject constructor(
             val playlists = JSONArray()
             playlistDao.allPlaylists().forEach { playlist ->
                 val songs = JSONArray()
-                playlistDao.songsInPlaylist(playlist.id).forEach { songs.put(it.data) }
+                playlistDao.songsInPlaylistOnce(playlist.id).forEach { songs.put(it.data) }
                 playlists.put(
                     JSONObject()
                         .put("name", playlist.name)
                         .put("kind", playlist.kind)
-                        .put("rules", playlist.rulesJson ?: JSONObject.NULL)
+                        .put("rules", playlist.smartRules ?: JSONObject.NULL)
                         .put("songs", songs),
                 )
             }
@@ -61,7 +62,7 @@ class BackupRepositoryImpl @Inject constructor(
                     JSONObject()
                         .put("path", row.path)
                         .put("playCount", row.playCount)
-                        .put("lastPlayedAt", row.lastPlayedAt ?: JSONObject.NULL),
+                        .put("lastPlayedAt", row.lastPlayedAt),
                 )
             }
 
@@ -90,7 +91,7 @@ class BackupRepositoryImpl @Inject constructor(
 
             val favorites = root.optJSONArray("favorites") ?: JSONArray()
             for (index in 0 until favorites.length()) {
-                resolveSongId(favorites.getString(index))?.let { songDao.setFavorite(it, true) }
+                resolveSongId(favorites.getString(index))?.let { statsDao.setFavorite(it, true) }
             }
 
             val playCounts = root.optJSONArray("playCounts") ?: JSONArray()
@@ -100,7 +101,7 @@ class BackupRepositoryImpl @Inject constructor(
                     statsDao.restorePlayCount(
                         songId = songId,
                         playCount = item.optInt("playCount"),
-                        lastPlayedAt = item.optLong("lastPlayedAt").takeIf { it > 0 },
+                        lastPlayedAt = item.optLong("lastPlayedAt"),
                     )
                 }
             }
@@ -114,7 +115,7 @@ class BackupRepositoryImpl @Inject constructor(
                         resolveSongId(songs.getString(songIndex))?.let { add(it) }
                     }
                 }
-                playlistDao.restorePlaylist(
+                restorePlaylist(
                     name = item.getString("name"),
                     kind = item.optString("kind"),
                     rulesJson = item.optString("rules").takeIf { it.isNotBlank() && it != "null" },
@@ -140,6 +141,33 @@ class BackupRepositoryImpl @Inject constructor(
             settingsRepository.importJson(File(sourcePath).readText())
             true
         }.getOrDefault(false)
+    }
+
+    /**
+     * Recreates one playlist from the backup file.
+     *
+     * Restores always create a new row rather than merging into an existing
+     * playlist of the same name, so importing can never silently destroy
+     * something the user built after the backup was taken.
+     */
+    private suspend fun restorePlaylist(
+        name: String,
+        kind: String,
+        rulesJson: String?,
+        songIds: List<Long>,
+    ) {
+        val now = System.currentTimeMillis()
+        val playlistId = playlistDao.createPlaylist(
+            PlaylistEntity(
+                name = name,
+                kind = kind.ifBlank { "USER" },
+                smartRules = rulesJson,
+                artworkUri = null,
+                createdAtEpochMs = now,
+                updatedAtEpochMs = now,
+            ),
+        )
+        if (songIds.isNotEmpty()) playlistDao.addSongs(playlistId, songIds, now)
     }
 
     /** Path first, then file name, so moved libraries still restore cleanly. */
