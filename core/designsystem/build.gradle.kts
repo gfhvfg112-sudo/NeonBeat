@@ -43,8 +43,8 @@ dependencies {
     api(projects.core.model)
     api(libs.coil.compose)
     api(libs.coil.gif)
-    api(libs.haze)
-    api(libs.haze.materials)
+    // Glassmorphism is implemented with Compose's built-in Modifier.blur():
+    // the `dev.chrisbanes.haze` artifacts are not published for this version.
     api(libs.androidx.material3.window.size)
     api(libs.androidx.material3.adaptive)
 
