@@ -3,6 +3,7 @@ package com.neonbeat.feature.settings
 import android.os.Environment
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.neonbeat.core.datastore.ReplayGainMode
 import com.neonbeat.core.datastore.SettingsRepository
 import com.neonbeat.core.datastore.ThemeMode
 import com.neonbeat.core.datastore.UserSettings
@@ -66,11 +67,15 @@ class SettingsViewModel @Inject constructor(
     }
 
     fun setCornerRadius(dp: Int) = viewModelScope.launch {
-        settingsRepository.setCornerRadius(dp.coerceIn(0, 36))
+        settingsRepository.setCornerRadius(dp)
     }
 
     fun setBlurRadius(dp: Int) = viewModelScope.launch {
-        settingsRepository.setBlurRadius(dp.coerceIn(0, 64))
+        settingsRepository.setBlurRadius(dp)
+    }
+
+    fun setGridColumns(columns: Int) = viewModelScope.launch {
+        settingsRepository.setGridColumns(columns)
     }
 
     // -------------------------------------------------------------- playback
@@ -80,15 +85,46 @@ class SettingsViewModel @Inject constructor(
     }
 
     fun setCrossfade(seconds: Int) = viewModelScope.launch {
-        settingsRepository.setCrossfade(seconds.coerceIn(0, 12))
+        settingsRepository.setCrossfade(seconds)
     }
 
+    /** ReplayGain is a mode, but the row exposes it as a simple on/off switch. */
     fun setReplayGain(enabled: Boolean) = viewModelScope.launch {
-        settingsRepository.setReplayGain(enabled)
+        settingsRepository.setReplayGain(if (enabled) ReplayGainMode.AUTO else ReplayGainMode.OFF)
     }
 
     fun setMonoAudio(enabled: Boolean) = viewModelScope.launch {
         settingsRepository.setMono(enabled)
+    }
+
+    fun setSkipSilence(enabled: Boolean) = viewModelScope.launch {
+        settingsRepository.setSkipSilence(enabled)
+    }
+
+    fun setBitPerfect(enabled: Boolean) = viewModelScope.launch {
+        settingsRepository.setBitPerfect(enabled)
+    }
+
+    fun setPreAmp(db: Float) = viewModelScope.launch {
+        settingsRepository.setPreAmp(db)
+    }
+
+    // --------------------------------------------------------------- effects
+
+    fun setEqualizerEnabled(enabled: Boolean) = viewModelScope.launch {
+        settingsRepository.setEqualizerEnabled(enabled)
+    }
+
+    fun setBassBoost(strength: Int) = viewModelScope.launch {
+        settingsRepository.setBassBoost(strength)
+    }
+
+    fun setVirtualizer(strength: Int) = viewModelScope.launch {
+        settingsRepository.setVirtualizer(strength)
+    }
+
+    fun setLoudnessGain(millibels: Int) = viewModelScope.launch {
+        settingsRepository.setLoudnessGain(millibels)
     }
 
     // --------------------------------------------------------------- library
@@ -106,16 +142,16 @@ class SettingsViewModel @Inject constructor(
     // ---------------------------------------------------------------- backup
 
     fun exportBackup() = viewModelScope.launch {
-        val target = File(defaultBackupDir(), "neonbeat-backup.json").path
-        val ok = backupRepository.exportBackup(target)
+        val target = File(defaultBackupDir(), BACKUP_FILE).path
+        val ok = runCatching { backupRepository.exportBackup(target) }.getOrDefault(false)
         _events.send(
             SettingsEvent.Message(if (ok) "Backup saved to $target" else "Backup failed"),
         )
     }
 
     fun importBackup() = viewModelScope.launch {
-        val source = File(defaultBackupDir(), "neonbeat-backup.json").path
-        val ok = backupRepository.importBackup(source)
+        val source = File(defaultBackupDir(), BACKUP_FILE).path
+        val ok = runCatching { backupRepository.importBackup(source) }.getOrDefault(false)
         _events.send(
             SettingsEvent.Message(if (ok) "Backup restored" else "No readable backup at $source"),
         )
@@ -127,4 +163,8 @@ class SettingsViewModel @Inject constructor(
      */
     private fun defaultBackupDir(): File =
         Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOCUMENTS)
+
+    private companion object {
+        const val BACKUP_FILE = "neonbeat-backup.json"
+    }
 }
