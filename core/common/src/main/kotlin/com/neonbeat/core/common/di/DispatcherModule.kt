@@ -25,11 +25,23 @@ annotation class MainDispatcher
 /**
  * Injecting dispatchers instead of hardcoding [Dispatchers] keeps every
  * repository and use case testable with `StandardTestDispatcher`.
+ *
+ * Provider function names must not collide with Java reserved keywords
+ * (`default`, `native`, ...): Dagger generates static proxy methods that reuse
+ * the Kotlin function name verbatim.
  */
 @Module
 @InstallIn(SingletonComponent::class)
 object DispatcherModule {
-    @Provides @IoDispatcher fun io(): CoroutineDispatcher = Dispatchers.IO
-    @Provides @DefaultDispatcher fun default(): CoroutineDispatcher = Dispatchers.Default
-    @Provides @MainDispatcher fun main(): CoroutineDispatcher = Dispatchers.Main.immediate
+    @Provides
+    @IoDispatcher
+    fun ioDispatcher(): CoroutineDispatcher = Dispatchers.IO
+
+    @Provides
+    @DefaultDispatcher
+    fun defaultDispatcher(): CoroutineDispatcher = Dispatchers.Default
+
+    @Provides
+    @MainDispatcher
+    fun mainDispatcher(): CoroutineDispatcher = Dispatchers.Main.immediate
 }
