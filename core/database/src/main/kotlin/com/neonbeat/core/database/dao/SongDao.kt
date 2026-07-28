@@ -15,6 +15,7 @@ import com.neonbeat.core.database.model.AlbumAggregate
 import com.neonbeat.core.database.model.ArtistAggregate
 import com.neonbeat.core.database.model.FolderAggregate
 import com.neonbeat.core.database.model.GenreAggregate
+import com.neonbeat.core.database.model.PlayCountRow
 import kotlinx.coroutines.flow.Flow
 
 /**
@@ -100,6 +101,32 @@ interface SongDao {
 
     @Query("SELECT COUNT(*) FROM songs")
     fun songCount(): Flow<Int>
+
+    @Query("SELECT * FROM songs WHERE data = :path LIMIT 1")
+    suspend fun findByPath(path: String): SongEntity?
+
+    /** Fallback lookup used when a backup was taken on another device. */
+    @Query("SELECT * FROM songs WHERE data LIKE '%' || :fileName LIMIT 1")
+    suspend fun findByFileName(fileName: String): SongEntity?
+
+    @Query(
+        """
+        SELECT s.data FROM songs s
+        JOIN song_stats st ON st.songId = s.id
+        WHERE st.isFavorite = 1
+        """,
+    )
+    suspend fun allFavoritePaths(): List<String>
+
+    @Query(
+        """
+        SELECT s.data AS path, st.playCount AS playCount,
+               st.lastPlayedAtEpochMs AS lastPlayedAt
+        FROM songs s JOIN song_stats st ON st.songId = s.id
+        WHERE st.playCount > 0
+        """,
+    )
+    suspend fun allPlayCounts(): List<PlayCountRow>
 
     // ---------------------------------------------------------------- search
 
