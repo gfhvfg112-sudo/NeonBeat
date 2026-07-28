@@ -149,9 +149,31 @@ data class SmartPlaylistRule(
     val value: String,
 )
 
-enum class SmartField { TITLE, ARTIST, ALBUM, GENRE, YEAR, PLAY_COUNT, RATING, DATE_ADDED, LAST_PLAYED, DURATION }
+enum class SmartField {
+    TITLE,
+    ARTIST,
+    ALBUM,
+    GENRE,
+    YEAR,
+    PLAY_COUNT,
+    RATING,
+    DATE_ADDED,
+    LAST_PLAYED,
+    DURATION,
+    FAVORITE,
+    FOLDER,
+}
 
-enum class SmartOperator { EQUALS, NOT_EQUALS, CONTAINS, GREATER_THAN, LESS_THAN, IN_LAST_DAYS }
+enum class SmartOperator {
+    EQUALS,
+    NOT_EQUALS,
+    CONTAINS,
+    NOT_CONTAINS,
+    STARTS_WITH,
+    GREATER_THAN,
+    LESS_THAN,
+    IN_LAST_DAYS,
+}
 
 /** Built-in, always-available auto playlists. */
 enum class AutoPlaylist(val key: String) {
