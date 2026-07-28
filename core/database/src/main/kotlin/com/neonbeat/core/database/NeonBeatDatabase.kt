@@ -75,7 +75,9 @@ object DatabaseModule {
     fun provideDatabase(@ApplicationContext context: Context): NeonBeatDatabase =
         Room.databaseBuilder(context, NeonBeatDatabase::class.java, NeonBeatDatabase.NAME)
             .setJournalMode(RoomDatabase.JournalMode.WRITE_AHEAD_LOGGING)
-            .fallbackToDestructiveMigration(dropAllTables = true)
+            // Room 2.6 exposes the no-argument overload; the cache is always
+            // rebuildable from MediaStore, so a destructive fallback is safe.
+            .fallbackToDestructiveMigration()
             .addCallback(
                 object : RoomDatabase.Callback() {
                     override fun onOpen(db: SupportSQLiteDatabase) {
