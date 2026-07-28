@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Appended to a song row's accessibility description while it is playing. -->
+    <string name="state_now_playing">Now playing</string>
+</resources>
