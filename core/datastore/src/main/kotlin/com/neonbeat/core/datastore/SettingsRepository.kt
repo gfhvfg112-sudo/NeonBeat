@@ -17,6 +17,8 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.components.SingletonComponent
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
+import kotlinx.serialization.builtins.MapSerializer
+import kotlinx.serialization.builtins.serializer
 import kotlinx.serialization.json.Json
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -167,22 +169,22 @@ class SettingsRepository @Inject constructor(
     val settings: Flow<UserSettings> = context.dataStore.data.map { p ->
         val d = UserSettings()
         UserSettings(
-            themeMode = p[Keys.themeMode]?.let(::enumOrNull) ?: d.themeMode,
+            themeMode = p[Keys.themeMode]?.let { enumOrNull<ThemeMode>(it) } ?: d.themeMode,
             useDynamicColor = p[Keys.dynamicColor] ?: d.useDynamicColor,
             accentColor = p[Keys.accentColor] ?: d.accentColor,
-            font = p[Keys.font]?.let(::enumOrNull) ?: d.font,
+            font = p[Keys.font]?.let { enumOrNull<AppFont>(it) } ?: d.font,
             cornerRadiusDp = p[Keys.cornerRadius] ?: d.cornerRadiusDp,
             useGlassmorphism = p[Keys.glass] ?: d.useGlassmorphism,
             blurRadiusDp = p[Keys.blurRadius] ?: d.blurRadiusDp,
             gridColumns = p[Keys.gridColumns] ?: d.gridColumns,
             showAlbumArtInList = p[Keys.showArt] ?: d.showAlbumArtInList,
             animatedAlbumArt = p[Keys.animatedArt] ?: d.animatedAlbumArt,
-            navigationStyle = p[Keys.navStyle]?.let(::enumOrNull) ?: d.navigationStyle,
-            playerStyle = p[Keys.playerStyle]?.let(::enumOrNull) ?: d.playerStyle,
+            navigationStyle = p[Keys.navStyle]?.let { enumOrNull<NavigationStyle>(it) } ?: d.navigationStyle,
+            playerStyle = p[Keys.playerStyle]?.let { enumOrNull<PlayerStyle>(it) } ?: d.playerStyle,
             enabledLibraryTabs = p[Keys.tabs] ?: d.enabledLibraryTabs,
             gaplessPlayback = p[Keys.gapless] ?: d.gaplessPlayback,
             crossfadeSeconds = p[Keys.crossfade] ?: d.crossfadeSeconds,
-            replayGainMode = p[Keys.replayGain]?.let(::enumOrNull) ?: d.replayGainMode,
+            replayGainMode = p[Keys.replayGain]?.let { enumOrNull<ReplayGainMode>(it) } ?: d.replayGainMode,
             preAmpDb = p[Keys.preAmp] ?: d.preAmpDb,
             playbackSpeed = p[Keys.speed] ?: d.playbackSpeed,
             pitchSemitones = p[Keys.pitch] ?: d.pitchSemitones,
@@ -212,7 +214,7 @@ class SettingsRepository @Inject constructor(
             doubleTapAction = p[Keys.doubleTap] ?: d.doubleTapAction,
             volumeGestureEnabled = p[Keys.volumeGesture] ?: d.volumeGestureEnabled,
             brightnessGestureEnabled = p[Keys.brightnessGesture] ?: d.brightnessGestureEnabled,
-            visualizerStyle = p[Keys.visualizer]?.let(::enumOrNull) ?: d.visualizerStyle,
+            visualizerStyle = p[Keys.visualizer]?.let { enumOrNull<VisualizerStyle>(it) } ?: d.visualizerStyle,
             floatingLyricsEnabled = p[Keys.floatingLyrics] ?: d.floatingLyricsEnabled,
             lyricsAutoScroll = p[Keys.lyricsAutoScroll] ?: d.lyricsAutoScroll,
         )
@@ -256,7 +258,7 @@ class SettingsRepository @Inject constructor(
         val prefs = context.dataStore.data.map { it.asMap() }
         val flat = mutableMapOf<String, String>()
         prefs.collectFirst { map -> map.forEach { (k, v) -> flat[k.name] = v.toString() } }
-        return Json.encodeToString(flat)
+        return Json.encodeToString(MapSerializer(String.serializer(), String.serializer()), flat.toMap())
     }
 
     private suspend fun <T> put(key: Preferences.Key<T>, value: T) {

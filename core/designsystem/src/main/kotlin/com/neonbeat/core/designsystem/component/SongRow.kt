@@ -1,6 +1,7 @@
 package com.neonbeat.core.designsystem.component
 
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
@@ -51,6 +52,7 @@ import com.neonbeat.core.model.Song
  * swipe actions are duplicated in the long-press menu so they remain reachable
  * with TalkBack and switch access.
  */
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun SongRow(
     song: Song,
