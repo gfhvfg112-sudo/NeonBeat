@@ -14,12 +14,11 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.QueueMusic
 import androidx.compose.material.icons.filled.Favorite
-import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Lyrics
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.QueueMusic
 import androidx.compose.material.icons.filled.Repeat
 import androidx.compose.material.icons.filled.Shuffle
 import androidx.compose.material.icons.filled.SkipNext
@@ -73,7 +72,8 @@ fun NowPlayingScreen(
 ) {
     val playback by viewModel.playback.collectAsStateWithLifecycle()
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
-    val song = playback.currentSong
+    val song by viewModel.currentSong.collectAsStateWithLifecycle()
+    val isFavorite by viewModel.isFavorite.collectAsStateWithLifecycle()
 
     Box(modifier.fillMaxSize()) {
         BlurredArtworkBackground(
@@ -141,11 +141,10 @@ fun NowPlayingScreen(
             )
 
             SecondaryControls(
-                isFavorite = song?.isFavorite == true,
+                isFavorite = isFavorite,
                 onFavorite = viewModel::favoriteCurrent,
                 onLyrics = viewModel::toggleLyrics,
                 onQueue = viewModel::toggleQueue,
-                onCollapse = onCollapse,
             )
         }
     }
@@ -275,7 +274,6 @@ private fun SecondaryControls(
     onFavorite: () -> Unit,
     onLyrics: () -> Unit,
     onQueue: () -> Unit,
-    onCollapse: () -> Unit,
 ) {
     Row(
         Modifier.fillMaxWidth(),
@@ -296,10 +294,7 @@ private fun SecondaryControls(
             Icon(Icons.Default.Lyrics, contentDescription = "Show lyrics")
         }
         IconButton(onClick = onQueue) {
-            Icon(Icons.Default.QueueMusic, contentDescription = "Show queue")
-        }
-        IconButton(onClick = onCollapse) {
-            Icon(Icons.Default.KeyboardArrowDown, contentDescription = "Collapse player")
+            Icon(Icons.AutoMirrored.Filled.QueueMusic, contentDescription = "Show queue")
         }
     }
 }
