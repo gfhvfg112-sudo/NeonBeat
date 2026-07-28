@@ -14,7 +14,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Favorite
-import androidx.compose.material.icons.filled.QueueMusic
+import androidx.compose.material.icons.automirrored.filled.QueueMusic
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -169,7 +169,7 @@ private fun SwipeBackground(direction: SwipeToDismissBoxValue) {
         contentAlignment = if (isQueue) Alignment.CenterEnd else Alignment.CenterStart,
     ) {
         Icon(
-            imageVector = if (isQueue) Icons.Default.QueueMusic else Icons.Default.Favorite,
+            imageVector = if (isQueue) Icons.AutoMirrored.Filled.QueueMusic else Icons.Default.Favorite,
             contentDescription = null,
             modifier = Modifier.scale(scale),
         )

@@ -91,7 +91,7 @@ class SleepTimerController @Inject constructor(
     /** Equal-power ramp: linear volume ramps sound abrupt at the end. */
     private suspend fun fadeOutAndPause(seconds: Int) {
         val p = player ?: return
-        val steps = (seconds * 1000 / FADE_STEP_MS).coerceAtLeast(1)
+        val steps = (seconds * 1000L / FADE_STEP_MS).toInt().coerceAtLeast(1)
         repeat(steps) { step ->
             val progress = 1f - (step + 1).toFloat() / steps
             p.volume = progress.pow(2f)

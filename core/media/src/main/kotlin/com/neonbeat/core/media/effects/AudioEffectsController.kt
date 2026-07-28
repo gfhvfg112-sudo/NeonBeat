@@ -108,7 +108,7 @@ class AudioEffectsController @Inject constructor(
         val eq = equalizer ?: return
         runCatching { eq.usePreset(presetIndex.toShort()) }
         settingsRepository.setEqualizerPreset(eq.getPresetName(presetIndex.toShort()))
-        val levels = (0 until eq.numberOfBands).map { eq.getBandLevel(it).toInt() }
+        val levels = (0 until eq.numberOfBands).map { eq.getBandLevel(it.toShort()).toInt() }
         settingsRepository.setEqualizerBands(levels.joinToString(","))
     }
 
