@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="nav_library">کتابخانه</string>
+    <string name="nav_search">جستجو</string>
+    <string name="nav_playlists">پلی‌لیست‌ها</string>
+    <string name="nav_settings">تنظیمات</string>
+    <string name="tab_songs">آهنگ‌ها</string>
+    <string name="tab_albums">آلبوم‌ها</string>
+    <string name="tab_artists">هنرمندان</string>
+    <string name="tab_genres">سبک‌ها</string>
+    <string name="tab_folders">پوشه‌ها</string>
+</resources>

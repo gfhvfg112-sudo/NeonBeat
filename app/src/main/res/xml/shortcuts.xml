@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+    <shortcut
+        android:shortcutId="shuffle_all"
+        android:enabled="true"
+        android:icon="@drawable/ic_note"
+        android:shortcutShortLabel="@string/cd_shuffle">
+        <intent
+            android:action="com.neonbeat.action.SHUFFLE_ALL"
+            android:targetPackage="com.neonbeat"
+            android:targetClass="com.neonbeat.MainActivity" />
+    </shortcut>
+    <shortcut
+        android:shortcutId="favorites"
+        android:enabled="true"
+        android:icon="@drawable/ic_note"
+        android:shortcutShortLabel="@string/cd_favorite">
+        <intent
+            android:action="com.neonbeat.action.PLAY_FAVORITES"
+            android:targetPackage="com.neonbeat"
+            android:targetClass="com.neonbeat.MainActivity" />
+    </shortcut>
+</shortcuts>
