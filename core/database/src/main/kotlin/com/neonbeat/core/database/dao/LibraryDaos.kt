@@ -15,6 +15,7 @@ import com.neonbeat.core.database.entity.PlaylistSongEntity
 import com.neonbeat.core.database.entity.QueueItemEntity
 import com.neonbeat.core.database.entity.SongEntity
 import com.neonbeat.core.database.entity.SongStatsEntity
+import com.neonbeat.core.database.model.ArtistPlayCount
 import com.neonbeat.core.database.model.PlaylistAggregate
 import kotlinx.coroutines.flow.Flow
 
@@ -44,6 +45,24 @@ interface PlaylistDao {
 
     @Insert
     suspend fun createPlaylist(playlist: PlaylistEntity): Long
+
+    @Query("SELECT * FROM playlists ORDER BY updatedAtEpochMs DESC")
+    suspend fun allPlaylists(): List<PlaylistEntity>
+
+    @Query("SELECT * FROM playlists WHERE id = :id")
+    fun playlist(id: Long): Flow<PlaylistEntity?>
+
+    @Query(
+        """
+        SELECT s.* FROM playlist_songs ps
+        JOIN songs s ON s.id = ps.songId
+        WHERE ps.playlistId = :playlistId ORDER BY ps.position ASC
+        """,
+    )
+    suspend fun songsInPlaylistOnce(playlistId: Long): List<SongEntity>
+
+    @Query("DELETE FROM playlist_songs WHERE playlistId = :playlistId AND songId = :songId")
+    suspend fun removeSong(playlistId: Long, songId: Long)
 
     @Query("UPDATE playlists SET name = :name, updatedAtEpochMs = :now WHERE id = :id")
     suspend fun rename(id: Long, name: String, now: Long)
@@ -102,6 +121,31 @@ interface StatsDao {
 
     @Query("UPDATE song_stats SET isFavorite = NOT isFavorite WHERE songId = :songId")
     suspend fun toggleFavorite(songId: Long)
+
+    @Query("UPDATE song_stats SET isFavorite = :favorite WHERE songId = :songId")
+    suspend fun setFavorite(songId: Long, favorite: Boolean)
+
+    /** Restores counters from a backup without inventing history rows. */
+    @Query(
+        """
+        UPDATE song_stats SET playCount = :playCount, lastPlayedAtEpochMs = :lastPlayedAt
+        WHERE songId = :songId
+        """,
+    )
+    suspend fun restorePlayCount(songId: Long, playCount: Int, lastPlayedAt: Long)
+
+    @Query(
+        """
+        SELECT s.artist AS name, SUM(st.playCount) AS playCount
+        FROM songs s JOIN song_stats st ON st.songId = s.id
+        WHERE st.playCount > 0
+        GROUP BY s.artist ORDER BY playCount DESC LIMIT :limit
+        """,
+    )
+    fun topArtists(limit: Int): Flow<List<ArtistPlayCount>>
+
+    @Query("DELETE FROM play_history")
+    suspend fun clearHistory()
 
     @Query(
         """
