@@ -7,48 +7,47 @@ import com.neonbeat.core.model.Bookmark
 import com.neonbeat.domain.repository.BookmarkRepository
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
 import javax.inject.Inject
 import javax.inject.Singleton
 
 /**
- * Position bookmarks, mainly useful for long files such as mixes, DJ sets,
- * audiobooks and podcasts.
+ * Per-track bookmarks, used mainly for long recordings such as podcasts,
+ * DJ sets and audiobooks where resuming at an exact point matters.
  */
 @Singleton
 class BookmarkRepositoryImpl @Inject constructor(
     private val bookmarkDao: BookmarkDao,
-    @IoDispatcher private val ioDispatcher: CoroutineDispatcher,
+    @IoDispatcher private val io: CoroutineDispatcher,
 ) : BookmarkRepository {
 
-    override fun bookmarks(): Flow<List<Bookmark>> =
-        bookmarkDao.observeAll().map { list -> list.map { it.toBookmark() } }
+    override fun bookmarks(songId: Long): Flow<List<Bookmark>> =
+        bookmarkDao.bookmarks(songId)
+            .map { rows -> rows.map { it.toBookmark() } }
+            .flowOn(io)
 
-    override fun bookmarksForSong(songId: Long): Flow<List<Bookmark>> =
-        bookmarkDao.observeForSong(songId).map { list -> list.map { it.toBookmark() } }
-
-    override suspend fun addBookmark(songId: Long, positionMs: Long, label: String?): Long =
-        withContext(ioDispatcher) {
-            bookmarkDao.insert(
+    override suspend fun add(songId: Long, positionMs: Long, label: String) {
+        withContext(io) {
+            bookmarkDao.add(
                 BookmarkEntity(
                     songId = songId,
-                    positionMs = positionMs,
+                    positionMs = positionMs.coerceAtLeast(0L),
                     label = label,
-                    createdAt = System.currentTimeMillis(),
                 ),
             )
         }
-
-    override suspend fun deleteBookmark(bookmarkId: Long) = withContext(ioDispatcher) {
-        bookmarkDao.deleteById(bookmarkId)
     }
 
-    private fun BookmarkEntity.toBookmark() = Bookmark(
-        id = id,
-        songId = songId,
-        positionMs = positionMs,
-        label = label,
-        createdAt = createdAt,
-    )
+    override suspend fun delete(id: Long) {
+        withContext(io) { bookmarkDao.delete(id) }
+    }
 }
+
+private fun BookmarkEntity.toBookmark() = Bookmark(
+    id = id,
+    songId = songId,
+    positionMs = positionMs,
+    label = label,
+)

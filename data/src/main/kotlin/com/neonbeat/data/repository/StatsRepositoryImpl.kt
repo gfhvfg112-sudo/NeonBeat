@@ -1,91 +1,64 @@
 package com.neonbeat.data.repository
 
 import com.neonbeat.core.common.di.IoDispatcher
+import com.neonbeat.core.database.dao.SongDao
 import com.neonbeat.core.database.dao.StatsDao
-import com.neonbeat.core.database.entity.PlayEventEntity
-import com.neonbeat.core.model.PlayEvent
 import com.neonbeat.core.model.Song
 import com.neonbeat.data.mapper.toSong
 import com.neonbeat.domain.repository.StatsRepository
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
 import javax.inject.Inject
 import javax.inject.Singleton
 
 /**
- * Listening statistics, history and recommendations.
+ * Listening statistics, history and lightweight recommendations.
  *
- * A play is only recorded once the track has been listened to past a
- * meaningful threshold, so skipping through an album does not pollute play
- * counts or "most played".
+ * Everything is derived from the `song_stats` and `play_history` tables that
+ * the playback service writes, so the screens stay accurate offline and never
+ * need a network round trip.
  */
 @Singleton
 class StatsRepositoryImpl @Inject constructor(
     private val statsDao: StatsDao,
-    @IoDispatcher private val ioDispatcher: CoroutineDispatcher,
+    private val songDao: SongDao,
+    @IoDispatcher private val io: CoroutineDispatcher,
 ) : StatsRepository {
 
-    override suspend fun recordPlay(
-        songId: Long,
-        playedMs: Long,
-        durationMs: Long,
-        completed: Boolean,
-    ) = withContext(ioDispatcher) {
-        val qualifies = completed ||
-            playedMs >= MIN_PLAY_MS ||
-            (durationMs > 0 && playedMs >= durationMs / 2)
-        if (!qualifies) return@withContext
+    override fun listeningMinutes(sinceEpochMs: Long): Flow<Long> =
+        statsDao.listenedMsSince(sinceEpochMs)
+            .map { it / MILLIS_PER_MINUTE }
+            .flowOn(io)
 
-        val now = System.currentTimeMillis()
-        statsDao.insertPlayEvent(
-            PlayEventEntity(
-                songId = songId,
-                playedAt = now,
-                playedMs = playedMs,
-                completed = completed,
-            ),
-        )
-        statsDao.incrementPlayCount(songId, now)
-    }
-
-    override fun history(limit: Int): Flow<List<PlayEvent>> =
-        statsDao.observeHistory(limit).map { events ->
-            events.map { event ->
-                PlayEvent(
-                    songId = event.songId,
-                    playedAt = event.playedAt,
-                    playedMs = event.playedMs,
-                    completed = event.completed,
-                )
-            }
-        }
-
-    override fun mostPlayed(limit: Int): Flow<List<Song>> =
-        statsDao.observeMostPlayed(limit).map { songs -> songs.map { it.toSong() } }
-
-    override fun recentlyPlayed(limit: Int): Flow<List<Song>> =
-        statsDao.observeRecentlyPlayed(limit).map { songs -> songs.map { it.toSong() } }
-
-    override fun totalListeningMs(sinceMs: Long): Flow<Long> = statsDao.observeTotalListened(sinceMs)
+    override fun topArtists(limit: Int): Flow<List<Pair<String, Int>>> =
+        statsDao.topArtists(limit)
+            .map { rows -> rows.map { it.name to it.playCount } }
+            .flowOn(io)
 
     /**
-     * Offline recommendations.
+     * Recently played tracks in play order.
      *
-     * Picks tracks the user rarely plays but that sit in their most-played
-     * genres and artists — a purely local heuristic, with no network calls and
-     * no profile data leaving the device.
+     * History rows only store ids, so the songs are fetched in a single batch
+     * and re-ordered in memory; that keeps the query count at two regardless of
+     * how long the requested window is.
      */
-    override fun recommendations(limit: Int): Flow<List<Song>> =
-        statsDao.observeRecommendations(limit).map { songs -> songs.map { it.toSong() } }
+    override fun history(limit: Int): Flow<List<Song>> =
+        statsDao.history(limit)
+            .map { events ->
+                val byId = songDao.songsByIds(events.map { it.songId }.distinct())
+                    .associateBy { it.id }
+                events.mapNotNull { byId[it.songId]?.toSong() }
+            }
+            .flowOn(io)
 
-    override suspend fun clearHistory() = withContext(ioDispatcher) {
-        statsDao.clearHistory()
+    override suspend fun recommendations(limit: Int): List<Song> = withContext(io) {
+        statsDao.recommendations(limit).map { it.toSong() }
     }
 
     private companion object {
-        /** 30 s is the long-standing scrobbling convention for a "real" play. */
-        const val MIN_PLAY_MS = 30_000L
+        const val MILLIS_PER_MINUTE = 60_000L
     }
 }

@@ -5,7 +5,6 @@ import com.neonbeat.core.common.di.IoDispatcher
 import com.neonbeat.core.database.dao.PlaylistDao
 import com.neonbeat.core.database.dao.SongDao
 import com.neonbeat.core.database.entity.PlaylistEntity
-import com.neonbeat.core.database.entity.PlaylistSongCrossRef
 import com.neonbeat.core.model.Playlist
 import com.neonbeat.core.model.PlaylistKind
 import com.neonbeat.core.model.SmartPlaylistRule
@@ -17,6 +16,8 @@ import com.neonbeat.data.playlist.SmartPlaylistCompiler
 import com.neonbeat.domain.repository.PlaylistRepository
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -26,9 +27,9 @@ import javax.inject.Singleton
 /**
  * Playlist storage: manual playlists, smart (rule-based) playlists and M3U I/O.
  *
- * Manual playlists store an explicit ordered membership table; smart playlists
+ * Manual playlists keep an explicit ordered membership table. Smart playlists
  * store only their rules and are compiled to SQL on read, so they stay correct
- * as the library changes without any background reconciliation.
+ * as the library changes without any background reconciliation job.
  */
 @Singleton
 class PlaylistRepositoryImpl @Inject constructor(
@@ -39,127 +40,145 @@ class PlaylistRepositoryImpl @Inject constructor(
 ) : PlaylistRepository {
 
     override fun playlists(): Flow<List<Playlist>> =
-        playlistDao.observePlaylists().map { list -> list.map { it.toPlaylist() } }
-
-    override suspend fun createPlaylist(name: String): Long = withContext(ioDispatcher) {
-        playlistDao.insert(
-            PlaylistEntity(
-                name = name,
-                kind = PlaylistKind.MANUAL.name,
-                createdAt = System.currentTimeMillis(),
-                updatedAt = System.currentTimeMillis(),
-            ),
-        )
-    }
-
-    override suspend fun createSmartPlaylist(
-        name: String,
-        rules: List<SmartPlaylistRule>,
-        matchAll: Boolean,
-        limit: Int?,
-    ): Long = withContext(ioDispatcher) {
-        playlistDao.insert(
-            PlaylistEntity(
-                name = name,
-                kind = PlaylistKind.SMART.name,
-                rulesJson = smartCompiler.encodeRules(rules, matchAll, limit),
-                createdAt = System.currentTimeMillis(),
-                updatedAt = System.currentTimeMillis(),
-            ),
-        )
-    }
-
-    override suspend fun renamePlaylist(playlistId: Long, name: String) = withContext(ioDispatcher) {
-        playlistDao.rename(playlistId, name, System.currentTimeMillis())
-    }
-
-    override suspend fun deletePlaylist(playlistId: Long) = withContext(ioDispatcher) {
-        playlistDao.deleteById(playlistId)
-    }
+        playlistDao.playlists()
+            .map { rows -> rows.map { it.toPlaylist() } }
+            .flowOn(ioDispatcher)
 
     /**
-     * Appends songs, preserving the caller's order.
+     * Members of a playlist.
      *
-     * Positions continue from the current maximum rather than being recomputed,
-     * which keeps the insert O(n) in the number of added songs instead of the
-     * playlist length.
+     * Smart playlists ignore the membership table entirely and re-run their
+     * compiled query, which is why a smart playlist immediately reflects newly
+     * scanned files.
      */
-    override suspend fun addSongs(playlistId: Long, songIds: List<Long>) = withContext(ioDispatcher) {
-        val start = playlistDao.maxPosition(playlistId) + 1
-        playlistDao.insertCrossRefs(
-            songIds.mapIndexed { index, songId ->
-                PlaylistSongCrossRef(
-                    playlistId = playlistId,
-                    songId = songId,
-                    position = start + index,
-                    addedAt = System.currentTimeMillis(),
-                )
-            },
-        )
-        playlistDao.touch(playlistId, System.currentTimeMillis())
+    override fun songsInPlaylist(playlistId: Long): Flow<List<Song>> = combine(
+        playlistDao.playlist(playlistId),
+        playlistDao.songsInPlaylist(playlistId),
+    ) { playlist, rows ->
+        val rules = playlist?.smartRules
+        if (playlist?.kind == PlaylistKind.SMART.name && !rules.isNullOrBlank()) {
+            runSmartQuery(rules)
+        } else {
+            rows.map { it.toSong() }
+        }
+    }.flowOn(ioDispatcher)
+
+    override suspend fun create(name: String): Long = withContext(ioDispatcher) {
+        insertPlaylist(name = name, kind = PlaylistKind.USER, smartRules = null)
     }
 
-    override suspend fun removeSong(playlistId: Long, songId: Long) = withContext(ioDispatcher) {
-        playlistDao.removeCrossRef(playlistId, songId)
-        playlistDao.touch(playlistId, System.currentTimeMillis())
-    }
-
-    /** Reorders after a drag-and-drop; rewrites only the affected span. */
-    override suspend fun moveSong(playlistId: Long, from: Int, to: Int) = withContext(ioDispatcher) {
-        val refs = playlistDao.crossRefs(playlistId).toMutableList()
-        if (from !in refs.indices || to !in refs.indices) return@withContext
-        val moved = refs.removeAt(from)
-        refs.add(to, moved)
-        playlistDao.insertCrossRefs(
-            refs.mapIndexed { index, ref -> ref.copy(position = index) },
-        )
-        playlistDao.touch(playlistId, System.currentTimeMillis())
-    }
-
-    /**
-     * Returns the playlist contents.
-     *
-     * Manual playlists read their membership table; smart playlists are compiled
-     * to a parameterised query and executed against the songs table on demand.
-     */
-    override fun songsInPlaylist(playlistId: Long): Flow<List<Song>> =
-        playlistDao.observePlaylistWithKind(playlistId).map { playlist ->
-            when {
-                playlist == null -> emptyList()
-                playlist.kind == PlaylistKind.SMART.name && playlist.rulesJson != null -> {
-                    val query = smartCompiler.compile(playlist.rulesJson)
-                    songDao.rawSongQuery(SimpleSQLiteQuery(query.sql, query.args.toTypedArray()))
-                        .map { it.toSong() }
-                }
-                else -> playlistDao.songsInPlaylist(playlistId).map { it.toSong() }
-            }
+    override suspend fun createSmart(name: String, rules: List<SmartPlaylistRule>): Long =
+        withContext(ioDispatcher) {
+            insertPlaylist(
+                name = name,
+                kind = PlaylistKind.SMART,
+                smartRules = smartCompiler.encodeRules(rules, matchAll = true, limit = null),
+            )
         }
 
-    // ------------------------------------------------------------------ M3U
+    override suspend fun rename(playlistId: Long, name: String) {
+        withContext(ioDispatcher) {
+            playlistDao.rename(playlistId, name, System.currentTimeMillis())
+        }
+    }
+
+    override suspend fun delete(playlistId: Long) {
+        withContext(ioDispatcher) { playlistDao.deletePlaylist(playlistId) }
+    }
+
+    override suspend fun addSongs(playlistId: Long, songIds: List<Long>) {
+        if (songIds.isEmpty()) return
+        withContext(ioDispatcher) {
+            playlistDao.addSongs(playlistId, songIds, System.currentTimeMillis())
+        }
+    }
 
     /**
-     * Imports an M3U/M3U8 file.
+     * Removes one member and closes the gap it leaves.
      *
-     * Entries are matched to the library by absolute path first, then by file
-     * name, so playlists exported on another device still resolve. Unmatched
-     * entries are skipped rather than failing the whole import.
+     * Positions are rewritten afterwards so drag-and-drop reordering never has
+     * to cope with holes in the sequence.
      */
-    override suspend fun importM3u(fileUri: String, name: String): Long = withContext(ioDispatcher) {
-        val entries = M3uCodec.read(File(fileUri))
-        val playlistId = createPlaylist(name)
-        val resolved = entries.mapNotNull { entry ->
-            songDao.findByPath(entry.path)?.id ?: songDao.findByFileName(File(entry.path).name)?.id
+    override suspend fun removeSong(playlistId: Long, songId: Long) {
+        withContext(ioDispatcher) {
+            playlistDao.removeSong(playlistId, songId)
+            val remaining = playlistDao.songsInPlaylistOnce(playlistId).map { it.id }
+            playlistDao.reorder(playlistId, remaining, System.currentTimeMillis())
         }
-        if (resolved.isNotEmpty()) addSongs(playlistId, resolved)
+    }
+
+    override suspend fun reorder(playlistId: Long, orderedSongIds: List<Long>) {
+        withContext(ioDispatcher) {
+            playlistDao.reorder(playlistId, orderedSongIds, System.currentTimeMillis())
+        }
+    }
+
+    override suspend fun resolveSmart(rules: List<SmartPlaylistRule>): List<Song> =
+        withContext(ioDispatcher) {
+            val compiled = smartCompiler.compile(rules)
+            songDao.rawSongQuery(SimpleSQLiteQuery(compiled.sql, compiled.args.toTypedArray()))
+                .map { it.toSong() }
+        }
+
+    /**
+     * Imports an `.m3u`/`.m3u8` file as a new playlist.
+     *
+     * Entries are matched by absolute path first and by file name second, so a
+     * playlist exported on a desktop still resolves after the files were copied
+     * to a different directory on the device. Unmatched entries are skipped
+     * rather than failing the whole import.
+     */
+    override suspend fun importM3u(uri: String): Long = withContext(ioDispatcher) {
+        val file = File(uri)
+        val entries = M3uCodec.read(file)
+        val songIds = entries.mapNotNull { entry -> resolveSongId(entry.path) }
+        val playlistId = insertPlaylist(
+            name = file.nameWithoutExtension.ifBlank { "Imported playlist" },
+            kind = PlaylistKind.USER,
+            smartRules = null,
+        )
+        if (songIds.isNotEmpty()) {
+            playlistDao.addSongs(playlistId, songIds, System.currentTimeMillis())
+        }
         playlistId
     }
 
-    override suspend fun exportM3u(playlistId: Long, targetPath: String): Boolean =
+    override suspend fun exportM3u(playlistId: Long, targetUri: String): Boolean =
         withContext(ioDispatcher) {
             runCatching {
-                val songs = playlistDao.songsInPlaylist(playlistId).map { it.toSong() }
-                M3uCodec.write(File(targetPath), songs)
+                val songs = playlistDao.songsInPlaylistOnce(playlistId).map { it.toSong() }
+                val target = File(targetUri)
+                target.parentFile?.mkdirs()
+                M3uCodec.write(target, songs)
                 true
             }.getOrDefault(false)
         }
+
+    private suspend fun insertPlaylist(
+        name: String,
+        kind: PlaylistKind,
+        smartRules: String?,
+    ): Long {
+        val now = System.currentTimeMillis()
+        return playlistDao.createPlaylist(
+            PlaylistEntity(
+                name = name,
+                kind = kind.name,
+                smartRules = smartRules,
+                artworkUri = null,
+                createdAtEpochMs = now,
+                updatedAtEpochMs = now,
+            ),
+        )
+    }
+
+    private suspend fun runSmartQuery(rulesJson: String): List<Song> {
+        val compiled = smartCompiler.compile(rulesJson)
+        return songDao
+            .rawSongQuery(SimpleSQLiteQuery(compiled.sql, compiled.args.toTypedArray()))
+            .map { it.toSong() }
+    }
+
+    private suspend fun resolveSongId(path: String): Long? =
+        songDao.findByPath(path)?.id ?: songDao.findByFileName(File(path).name)?.id
 }

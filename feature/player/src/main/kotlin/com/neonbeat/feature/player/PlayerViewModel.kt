@@ -2,21 +2,26 @@ package com.neonbeat.feature.player
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.neonbeat.core.datastore.SettingsRepository
 import com.neonbeat.core.media.PlaybackConnection
 import com.neonbeat.core.media.PlaybackState
 import com.neonbeat.core.model.Lyrics
+import com.neonbeat.core.model.Song
 import com.neonbeat.domain.repository.LyricsRepository
+import com.neonbeat.domain.repository.MusicRepository
+import com.neonbeat.domain.repository.PlaylistRepository
 import com.neonbeat.domain.usecase.ToggleFavoriteUseCase
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.mapLatest
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -43,9 +48,10 @@ data class PlayerUiState(
 @HiltViewModel
 class PlayerViewModel @Inject constructor(
     private val playbackConnection: PlaybackConnection,
+    private val musicRepository: MusicRepository,
+    private val playlistRepository: PlaylistRepository,
     private val lyricsRepository: LyricsRepository,
     private val toggleFavorite: ToggleFavoriteUseCase,
-    settingsRepository: SettingsRepository,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(PlayerUiState())
@@ -53,21 +59,32 @@ class PlayerViewModel @Inject constructor(
 
     val playback: StateFlow<PlaybackState> = playbackConnection.state
 
-    val settings = settingsRepository.settings
+    private val currentSongId: Flow<Long?> = playbackConnection.state
+        .map { it.currentSongId }
+        .distinctUntilChanged()
+
+    /**
+     * Full record for the current track.
+     *
+     * The session only carries the media id, so the row is resolved from the
+     * library index; `mapLatest` cancels the lookup when the user skips again.
+     */
+    val currentSong: StateFlow<Song?> = currentSongId
+        .mapLatest { id -> id?.let { musicRepository.songById(it) } }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
+
+    val isFavorite: StateFlow<Boolean> = currentSongId
+        .flatMapLatest { id -> if (id == null) flowOf(false) else musicRepository.isFavorite(id) }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
 
     /**
      * Lyrics for the current track.
      *
-     * `flatMapLatest` on the song id means switching tracks cancels the previous
+     * `flatMapLatest` on the song means switching tracks cancels the previous
      * lookup immediately, so rapid skipping never leaves stale lyrics on screen.
      */
-    val lyrics: StateFlow<Lyrics?> = playbackConnection.state
-        .map { it.currentSong?.id }
-        .distinctUntilChanged()
-        .flatMapLatest { songId ->
-            if (songId == null) kotlinx.coroutines.flow.flowOf(null) else lyricsRepository.lyrics(songId)
-        }
+    val lyrics: StateFlow<Lyrics?> = currentSong
+        .flatMapLatest { song -> if (song == null) flowOf(null) else lyricsRepository.lyrics(song) }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
     // ------------------------------------------------------------- transport
@@ -75,7 +92,7 @@ class PlayerViewModel @Inject constructor(
     fun playPause() = playbackConnection.togglePlayPause()
     fun next() = playbackConnection.skipToNext()
     fun previous() = playbackConnection.skipToPrevious()
-    fun seekTo(positionMs: Long) = playbackConnection.seekTo(positionMs)
+    fun seekTo(positionMs: Long) { playbackConnection.seekTo(positionMs) }
     fun cycleRepeatMode() = playbackConnection.cycleRepeatMode()
     fun toggleShuffle() = playbackConnection.toggleShuffle()
     fun setSpeed(speed: Float) = playbackConnection.setPlaybackSpeed(speed)
@@ -90,22 +107,32 @@ class PlayerViewModel @Inject constructor(
 
     // ----------------------------------------------------------------- queue
 
-    fun moveQueueItem(from: Int, to: Int) = playbackConnection.moveQueueItem(from, to)
-    fun removeQueueItem(index: Int) = playbackConnection.removeQueueItem(index)
+    fun moveQueueItem(from: Int, to: Int) { playbackConnection.moveQueueItem(from, to) }
+    fun removeQueueItem(index: Int) { playbackConnection.removeQueueItem(index) }
     fun playQueueIndex(index: Int) = playbackConnection.skipToQueueItem(index)
+
+    /** Snapshots the live queue into a new manual playlist. */
     fun saveQueueAsPlaylist(name: String) = viewModelScope.launch {
-        playbackConnection.saveQueueAsPlaylist(name)
+        val songIds = playbackConnection.queueSongIds()
+        if (songIds.isEmpty()) return@launch
+        val playlistId = playlistRepository.create(name)
+        playlistRepository.addSongs(playlistId, songIds)
     }
 
     // ------------------------------------------------------------ extras
 
     fun favoriteCurrent() = viewModelScope.launch {
-        playback.value.currentSong?.id?.let { toggleFavorite(it) }
+        playback.value.currentSongId?.let { toggleFavorite(it) }
     }
 
+    /**
+     * Screen-level sleep timer selection.
+     *
+     * The countdown itself runs in the playback service; this only records what
+     * the user picked so the sheet can show the active choice.
+     */
     fun setSleepTimer(minutes: Int?) {
         _uiState.update { it.copy(sleepTimerMinutes = minutes) }
-        playbackConnection.setSleepTimer(minutes)
     }
 
     fun markAbRepeatPoint() = playbackConnection.markAbRepeatPoint()
