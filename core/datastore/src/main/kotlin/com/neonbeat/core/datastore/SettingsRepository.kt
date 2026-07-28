@@ -261,6 +261,48 @@ class SettingsRepository @Inject constructor(
         return Json.encodeToString(MapSerializer(String.serializer(), String.serializer()), flat.toMap())
     }
 
+    // Convenience aliases used by the settings UI.
+    suspend fun setGlassEffects(enabled: Boolean) = setGlassmorphism(enabled)
+    suspend fun setCrossfadeSeconds(seconds: Int) = setCrossfade(seconds)
+    suspend fun setReplayGainEnabled(enabled: Boolean) =
+        setReplayGain(if (enabled) ReplayGainMode.TRACK else ReplayGainMode.OFF)
+    suspend fun setMonoAudio(enabled: Boolean) = setMono(enabled)
+    suspend fun setResumeOnHeadset(enabled: Boolean) = put(Keys.resumeOnConnect, enabled)
+    suspend fun setRespectNoMedia(enabled: Boolean) = put(Keys.respectNoMedia, enabled)
+    suspend fun setMinTrackSeconds(seconds: Int) = put(Keys.minDuration, seconds.coerceIn(0, 300))
+
+    /**
+     * Restores a payload produced by [exportJson].
+     *
+     * Export flattens every preference to its string form, so the concrete
+     * preference type is inferred back from the text. Unparseable or unknown
+     * entries are skipped rather than aborting the whole restore.
+     */
+    suspend fun importJson(json: String) {
+        val flat = runCatching {
+            Json.decodeFromString(MapSerializer(String.serializer(), String.serializer()), json)
+        }.getOrNull() ?: return
+        context.dataStore.edit { prefs ->
+            flat.forEach { (name, raw) ->
+                when {
+                    raw == "true" || raw == "false" ->
+                        prefs[booleanPreferencesKey(name)] = raw.toBoolean()
+
+                    raw.startsWith("[") && raw.endsWith("]") ->
+                        prefs[stringSetPreferencesKey(name)] = raw.removeSurrounding("[", "]")
+                            .split(",")
+                            .map { it.trim() }
+                            .filter { it.isNotEmpty() }
+                            .toSet()
+
+                    raw.toIntOrNull() != null -> prefs[intPreferencesKey(name)] = raw.toInt()
+                    raw.toFloatOrNull() != null -> prefs[floatPreferencesKey(name)] = raw.toFloat()
+                    else -> prefs[stringPreferencesKey(name)] = raw
+                }
+            }
+        }
+    }
+
     private suspend fun <T> put(key: Preferences.Key<T>, value: T) {
         context.dataStore.edit { it[key] = value }
     }

@@ -81,6 +81,11 @@ interface PlaylistRepository {
 interface SearchRepository {
     /** Instant, debounced multi-entity search backed by FTS4. */
     fun search(query: String): Flow<SearchResults>
+
+    /** Most recent non-trivial queries, newest first. */
+    fun recentQueries(): Flow<List<String>>
+
+    suspend fun clearRecentQueries()
 }
 
 data class SearchResults(
@@ -118,6 +123,8 @@ interface BookmarkRepository {
 
 /** Backup and restore of the database plus every preference. */
 interface BackupRepository {
-    suspend fun exportTo(uri: String): Boolean
-    suspend fun importFrom(uri: String): Boolean
+    suspend fun exportBackup(targetPath: String): Boolean
+    suspend fun importBackup(sourcePath: String): Boolean
+    suspend fun exportSettings(targetPath: String): Boolean
+    suspend fun importSettings(sourcePath: String): Boolean
 }
