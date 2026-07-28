@@ -30,6 +30,10 @@ data class PlaybackState(
     val queueSize: Int = 0,
     val queueIndex: Int = 0,
     val abRepeat: Pair<Long, Long>? = null,
+    /** Session metadata for the current item, so the UI can render without a DB hit. */
+    val currentTitle: String? = null,
+    val currentArtist: String? = null,
+    val currentArtworkUri: String? = null,
 )
 
 /**
@@ -95,6 +99,47 @@ class PlaybackConnection @Inject constructor(
 
     fun next() = controller?.seekToNextMediaItem()
     fun previous() = controller?.seekToPreviousMediaItem()
+
+    // Names used by the UI layer; kept as thin aliases so screens read naturally.
+    fun togglePlayPause() = playPause()
+    fun skipToNext() { next() }
+    fun skipToPrevious() { previous() }
+
+    /** OFF -> ALL -> ONE -> OFF, matching the icon cycle in the player. */
+    fun cycleRepeatMode() {
+        val c = controller ?: return
+        c.repeatMode = when (c.repeatMode) {
+            Player.REPEAT_MODE_OFF -> Player.REPEAT_MODE_ALL
+            Player.REPEAT_MODE_ALL -> Player.REPEAT_MODE_ONE
+            else -> Player.REPEAT_MODE_OFF
+        }
+    }
+
+    fun toggleShuffle() {
+        val c = controller ?: return
+        c.shuffleModeEnabled = !c.shuffleModeEnabled
+    }
+
+    fun setPlaybackSpeed(speed: Float) {
+        val c = controller ?: return
+        c.playbackParameters = PlaybackParameters(speed, c.playbackParameters.pitch)
+    }
+
+    fun setPitch(pitch: Float) {
+        val c = controller ?: return
+        c.playbackParameters = PlaybackParameters(c.playbackParameters.speed, pitch)
+    }
+
+    fun skipToQueueItem(index: Int) {
+        val c = controller ?: return
+        if (index in 0 until c.mediaItemCount) c.seekToDefaultPosition(index)
+    }
+
+    /** Song ids currently in the queue, in queue order. */
+    fun queueSongIds(): List<Long> {
+        val c = controller ?: return emptyList()
+        return (0 until c.mediaItemCount).mapNotNull { c.getMediaItemAt(it).mediaId.toLongOrNull() }
+    }
     fun seekTo(positionMs: Long) = controller?.seekTo(positionMs)
     fun setShuffle(enabled: Boolean) { controller?.shuffleModeEnabled = enabled }
     fun setRepeatMode(mode: Int) { controller?.repeatMode = mode }
@@ -119,6 +164,14 @@ class PlaybackConnection @Inject constructor(
      *
      * First call marks A, second marks B, third clears the loop.
      */
+    fun markAbRepeatPoint() = cycleAbRepeat()
+
+    fun clearAbRepeat() {
+        abStart = null
+        abEnd = null
+        controller?.let(::publish)
+    }
+
     fun cycleAbRepeat() {
         val position = controller?.currentPosition ?: return
         when {
@@ -151,6 +204,9 @@ class PlaybackConnection @Inject constructor(
             queueSize = player.mediaItemCount,
             queueIndex = player.currentMediaItemIndex,
             abRepeat = abStart?.let { start -> abEnd?.let { end -> start to end } },
+            currentTitle = player.currentMediaItem?.mediaMetadata?.title?.toString(),
+            currentArtist = player.currentMediaItem?.mediaMetadata?.artist?.toString(),
+            currentArtworkUri = player.currentMediaItem?.mediaMetadata?.artworkUri?.toString(),
         )
     }
 }
