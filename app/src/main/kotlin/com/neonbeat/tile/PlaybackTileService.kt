@@ -6,6 +6,7 @@ import com.neonbeat.core.media.PlaybackConnection
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.launchIn
@@ -32,7 +33,7 @@ class PlaybackTileService : TileService() {
         val newScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
         scope = newScope
         playbackConnection.state
-            .onEach { state -> render(isPlaying = state.isPlaying, title = state.currentSong?.title) }
+            .onEach { state -> render(isPlaying = state.isPlaying, title = state.currentTitle) }
             .launchIn(newScope)
     }
 

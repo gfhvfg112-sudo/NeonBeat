@@ -50,3 +50,16 @@ data class PlaylistAggregate(
     val songCount: Int,
     val durationMs: Long,
 )
+
+/** Path + play statistics projection used by backup export. */
+data class PlayCountRow(
+    val path: String,
+    val playCount: Int,
+    val lastPlayedAt: Long,
+)
+
+/** Artist ranked by total play count, used by the statistics screen. */
+data class ArtistPlayCount(
+    val name: String,
+    val playCount: Int,
+)

@@ -33,6 +33,8 @@ dependencies {
     api(projects.domain)
     implementation(projects.core.common)
     implementation(projects.core.database)
+    // SupportSQLiteQuery/SimpleSQLiteQuery are used for compiled smart-playlist queries.
+    implementation(libs.androidx.room.runtime)
     implementation(projects.core.datastore)
     implementation(projects.core.media)
     implementation(libs.androidx.paging.runtime)
