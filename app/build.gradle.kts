@@ -19,10 +19,10 @@ android {
         versionName = "1.0.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables.useSupportLibrary = true
-    }
-
-    androidResources {
-        localeFilters += listOf("en", "fa", "ar", "de", "es", "fr", "hi", "ja", "pt", "ru", "tr", "zh")
+        // `localeFilters` only exists from AGP 8.9; this project targets AGP 8.7.
+        resourceConfigurations += setOf(
+            "en", "fa", "ar", "de", "es", "fr", "hi", "ja", "pt", "ru", "tr", "zh",
+        )
     }
 
     buildTypes {
@@ -82,6 +82,7 @@ dependencies {
     implementation(libs.androidx.glance.material3)
     implementation(libs.androidx.material3.adaptive.navigation)
     implementation(libs.androidx.material3.adaptive.layout)
+    implementation(libs.coil.compose)
 
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.androidx.compose.ui)
